@@ -1,0 +1,5 @@
+CLIENT_ID     = 'changeme'
+CLIENT_SECRET = 'changeme'
+USER_AGENT    = 'changeme'
+USERNAME      = 'changeme'
+PASSWORD      = 'changeme'
