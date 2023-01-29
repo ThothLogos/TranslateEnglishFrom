@@ -22,13 +22,17 @@ def main():
 def parse_summon_request(message):
   if f"/u/{config.USERNAME}" in message.body:
     print("[SUMMON]  /u/summoned")
-    lang_capture_attempt = re.search('(\/u\/TranslateEnglishFrom) (\w+)', message.body)
+    lang_capture_attempt = re.search(f"(\/u\/{config.USERNAME}) (\w+)", message.body)
     if lang_capture_attempt:
       print(f"[CAPTURE] Raw capture: {lang_capture_attempt.group(0)}")
-      requested_lang = lang_capture_attempt.group(0).split(' ')[1]
+      requested_lang = lang_capture_attempt.group(0).split(' ')[1].lower().capitalize()
       if requested_lang in config.LANGUAGES:
         print(f"[CAPTURE] FOUND! -- requested language {requested_lang} is valid")
-        reply_valid_request(message, requested_lang)
+        url = f"http://reddit.com{message.submission.permalink}"
+        print(f"[PROCESS] Attempting to process: {url}")
+        print(url)
+        #reply_valid_request(message, requested_lang)
+        #message.mark_read()
       else:
         print(f"[ERROR] NOT FOUND -- Requested language: {requested_lang}")
         #reply_invalid_request(message, requested_lang)
@@ -36,13 +40,13 @@ def parse_summon_request(message):
       print("[ERROR] Language capture regex failed")
   else:
     print(f"[IGNORED] Message from {message.author} was not a tag, marking as read")
-    #message.mark_read()
+    message.mark_read()
     return
 
 
 def reply_valid_request(message, language):
-  print(f"[REPLY]  Attempting to reply to {message.author} for valid {language} request")
-  message.reply(f"You requested a translation of {language}")
+  print(f"[REPLY] Replying to {message.author} for valid {language} request")
+  #message.reply(f"You requested a translation of {language}")
   return
 
 def attempt_translation(post):
