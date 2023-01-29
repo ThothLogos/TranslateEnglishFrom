@@ -1,3 +1,4 @@
+MEDIA_TEMPDIR = 'changeme'
 CLIENT_ID     = 'changeme'
 CLIENT_SECRET = 'changeme'
 USER_AGENT    = 'changeme'
