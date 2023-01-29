@@ -5,8 +5,8 @@ import subprocess
 import praw
 import config
 
+# TODO: Move to async system calls and maintain a job queue
 jobqueue = {}
-
 
 def main():
     reddit = praw.Reddit(
@@ -16,10 +16,11 @@ def main():
         user_agent=config.USER_AGENT,
         username=config.USERNAME,
     )
+    # Ensure we have gettit and whisper available
+    if check_dependencies(): log_debug("Dependency check passed")
     # Check inbox for potential new translation requests
     for unread in reversed(list(reddit.inbox.unread())):
         parse_summon_request(unread)
-
 
 # Format we want to reply to: [ignored] /u/TranslateEnglishFrom [language] [ignored]
 # TODO: You should have to say please? We shouldn't abandon civility towards machines. #Prepare
@@ -54,25 +55,38 @@ def reply_valid_request(message, language):
 def attempt_translation(url, id, lang):
     log_process(f"Attempting to process: {url}")
     target_media = download_media(url, id, lang)
-    log_process(f"Translating media file: {target_media}")
+    if target_media:
+        log_process(f"Translating media file: {target_media}")
     return
 
 def download_media(url, id, lang):
-  which = subprocess.run(["which", "gettit"], capture_output=True)
-  if which.returncode != 0:
-    log_err("Failed to find gettit - which gettit returns non-zero")
-    return None
-  dir = config.MEDIA_TEMPDIR
-  filename = f"{lang.lower()}_{id}"
-  filepath = f"{config.MEDIA_TEMPDIR}/{filename}.mp4"
-  log_process("Attempting to download Reddit media file using `gettit`")
-  gettit = subprocess.run(["gettit", "-u", url, "-o", filepath], capture_output=True)
-  if gettit.returncode != 0:
-    log_err("Failed to find gettit - which gettit returns non-zero")
-    log_debug(gettit.stderr)
-    log_debug(gettit.stdout)
-    log_debug(gettit.args)
-  return filepath
+    dir = config.MEDIA_TEMPDIR
+    filename = f"{lang.lower()}_{id}"
+    filepath = f"{config.MEDIA_TEMPDIR}/{filename}.mp4"
+    if file_already_exists(filepath):
+        log_err("This file has already been downloaded, aborting request")
+        return None
+    log_process("Attempting to download Reddit media file using `gettit`")
+    gettit = subprocess.run(["gettit", "-u", url, "-o", filepath], capture_output=True)
+    if gettit.returncode != 0:
+        log_debug(gettit.stderr)
+        log_debug(gettit.stdout)
+        log_debug(gettit.args)
+    return filepath
+
+def file_already_exists(filepath):
+    test = subprocess.run(["test", "-f", filepath], capture_output=True)
+    if test.returncode == 0:
+      return True
+    else:
+      return False
+
+def check_dependencies():
+    which = subprocess.run(["which", "gettit"], capture_output=True)
+    if which.returncode != 0:
+        log_err("Failed to find gettit - which gettit returns non-zero")
+        return False
+    return True
 
 def log_err(message):     print(f"  [ERROR]  {message}")
 def log_debug(message):   print(f"  [DEBUG]  {message}")
