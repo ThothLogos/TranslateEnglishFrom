@@ -1,6 +1,7 @@
 import sys
 sys.path.append('./config')
 import re
+import subprocess
 import praw
 import config
 
@@ -46,7 +47,7 @@ def parse_summon_request(message):
 
 
 def reply_valid_request(message, language):
-    print(f"  [REPLY]  Replying to {message.author} for valid {language} request")
+    log_reply(f"Replying to {message.author} for valid {language} request")
     #message.reply(f"You requested a translation of {language}")
     return
 
@@ -57,12 +58,24 @@ def attempt_translation(url, id, lang):
     return
 
 def download_media(url, id, lang):
+  which = subprocess.run(["which", "gettit"], capture_output=True)
+  if which.returncode != 0:
+    log_err("Failed to find gettit - which gettit returns non-zero")
+    return None
   dir = config.MEDIA_TEMPDIR
   filename = f"{lang.lower()}_{id}"
-  filepath = f"{config.MEDIA_TEMPDIR}/{filename}"
+  filepath = f"{config.MEDIA_TEMPDIR}/{filename}.mp4"
+  log_process("Attempting to download Reddit media file using `gettit`")
+  gettit = subprocess.run(["gettit", "-u", url, "-o", filepath], capture_output=True)
+  if gettit.returncode != 0:
+    log_err("Failed to find gettit - which gettit returns non-zero")
+    log_debug(gettit.stderr)
+    log_debug(gettit.stdout)
+    log_debug(gettit.args)
   return filepath
 
 def log_err(message):     print(f"  [ERROR]  {message}")
+def log_debug(message):   print(f"  [DEBUG]  {message}")
 def log_reply(message):   print(f"  [REPLY]  {message}")
 def log_capture(message): print(f"[CAPTURE]  {message}")
 def log_process(message): print(f"[PROCESS]  {message}")
