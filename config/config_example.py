@@ -4,6 +4,7 @@ CLIENT_SECRET = 'changeme'
 USER_AGENT    = 'changeme'
 USERNAME      = 'changeme'
 PASSWORD      = 'changeme'
+WHISPER_MODEL = 'large-v2'
 LANGUAGES     = [
   'Afrikaans',
   'Albanian',
