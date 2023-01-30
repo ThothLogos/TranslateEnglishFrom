@@ -31,14 +31,14 @@ def parse_summon_request(message):
             log_capture(f"Raw capture: {lang_capture.group(0)}")
             requested_lang = lang_capture.group(0).split(' ')[1].lower().capitalize()
             if requested_lang in config.LANGUAGES:
-                log_capture(f"FOUND! -- requested language {requested_lang} is valid")
+                log_capture(f"VALID - {requested_lang} is a valid language request")
                 url = f"http://reddit.com{message.submission.permalink}"
                 reply_valid_request(message, requested_lang)
                 attempt_translation(url, message.id, requested_lang)
                 #message.mark_read()
             else:
                 log_err(f"NOT FOUND -- Requested language: {requested_lang}")
-                #reply_invalid_request(message, requested_lang)
+                reply_invalid_request(message, requested_lang)
         else:
             log_err("Language capture regex failed")
     else:
@@ -48,8 +48,11 @@ def parse_summon_request(message):
 
 
 def reply_valid_request(message, language):
-    log_reply(f"Replying to {message.author} for valid {language} request")
+    log_reply(f"Replying to /u/{message.author} for valid {language} request")
     #message.reply(f"You requested a translation of {language}")
+    return
+
+def reply_invalid_request(message, language):
     return
 
 def attempt_translation(url, id, lang):
@@ -57,7 +60,15 @@ def attempt_translation(url, id, lang):
     target_media = download_media(url, id, lang)
     if target_media:
         log_process(f"Translating media file: {target_media}")
-    return
+        whisper = subprocess.run(["whisper", target_media, "--language", lang,
+                  "--model", "small", "--task", "translate"])
+        if whisper.returncode == 0:
+            log_process(f"COMPLETE - Translation of {target_media} complete")
+        else:
+            log_debug("Whisper exited non-zero")
+    else:
+        log_process(f"Download failed, aborting translation process")
+        return
 
 def download_media(url, id, lang):
     dir = config.MEDIA_TEMPDIR
@@ -77,14 +88,18 @@ def download_media(url, id, lang):
 def file_already_exists(filepath):
     test = subprocess.run(["test", "-f", filepath], capture_output=True)
     if test.returncode == 0:
-      return True
+        return True
     else:
-      return False
+        return False
 
 def check_dependencies():
     which = subprocess.run(["which", "gettit"], capture_output=True)
     if which.returncode != 0:
         log_err("Failed to find gettit - which gettit returns non-zero")
+        return False
+    which = subprocess.run(["which", "whisper"], capture_output=True)
+    if which.returncode != 0:
+        log_err("Failed to find whisper - which whisper returns non-zero")
         return False
     return True
 
