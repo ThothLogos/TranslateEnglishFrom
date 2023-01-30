@@ -28,13 +28,13 @@ def parse_summon_request(message):
     if f"/u/{config.USERNAME}" in message.body:
         lang_capture = re.search(f"(\/u\/{config.USERNAME}) (\w+)", message.body)
         if lang_capture:
-            log_capture(f"Raw capture: {lang_capture.group(0)}")
+            log_capture(f"Regex Capture: {lang_capture.group(0)}")
             requested_lang = lang_capture.group(0).split(' ')[1].lower().capitalize()
             if requested_lang in config.LANGUAGES:
                 log_capture(f"VALID - {requested_lang} is a valid language request")
                 url = f"http://reddit.com{message.submission.permalink}"
-                reply_valid_request(message, requested_lang)
-                attempt_translation(url, message.id, requested_lang)
+                transcript = attempt_translation(url, message.id, requested_lang)
+                reply_valid_request(message, requested_lang, transcript)
                 #message.mark_read()
             else:
                 log_err(f"NOT FOUND -- Requested language: {requested_lang}")
@@ -42,33 +42,40 @@ def parse_summon_request(message):
         else:
             log_err("Language capture regex failed")
     else:
-        log_ignored(f"Message from {message.author} was not a tag, marking as read")
+        log_ignored(f"Message from {message.author} was not a bot request, marking as read")
         message.mark_read()
         return
 
 
-def reply_valid_request(message, language):
+def reply_valid_request(message, language, transcript):
     log_reply(f"Replying to /u/{message.author} for valid {language} request")
-    #message.reply(f"You requested a translation of {language}")
+    message.reply(f'You requested a translation of {language}, Whisper returned:\n\n{transcript}')
     return
 
 def reply_invalid_request(message, language):
     return
 
 def attempt_translation(url, id, lang):
-    log_process(f"Attempting to process: {url}")
+    log_process(f"New Job: {url}")
     target_media = download_media(url, id, lang)
     if target_media:
         log_process(f"Translating media file: {target_media}")
-        whisper = subprocess.run(["whisper", target_media, "--language", lang,
-                  "--model", "small", "--task", "translate"])
+        whisper = subprocess.run([  "whisper", target_media,
+                                    "--language", lang,
+                                    "--model", config.WHISPER_MODEL,
+                                    "--task", "translate",
+                                    "--output_dir", config.MEDIA_TEMPDIR],
+                                    capture_output=True)
         if whisper.returncode == 0:
             log_process(f"COMPLETE - Translation of {target_media} complete")
+            lines = whisper.stdout.decode('UTF-8').split('\n')
+            return '  \n'.join(lines) # Reddit formatting requires two spaces for line breaks
         else:
             log_debug("Whisper exited non-zero")
+            return None
     else:
         log_process(f"Download failed, aborting translation process")
-        return
+        return None
 
 def download_media(url, id, lang):
     dir = config.MEDIA_TEMPDIR
