@@ -21,6 +21,7 @@ def main():
             parse_inbox_request(unread)
     except Exception as e:
         log_err(e)
+        raise e
         exit()
 
 # Format we want to reply to: [ignored] /u/TranslateEnglishFrom [language] [ignored]
@@ -33,38 +34,44 @@ def parse_inbox_request(message):
             requested_lang = lang_capture.group(0).split(' ')[1].lower().capitalize()
             if requested_lang in config.LANGUAGES:
                 url = f"http://reddit.com{message.submission.permalink}"
-                transcript = attempt_translation(url, message.id, requested_lang)
-                #reply_valid_request(message, requested_lang, transcript)
-                #message.mark_read()
+                media_file = download_media(url, message.id, requested_lang)
+                transcript = translate_media_file(media_file, requested_lang)
+                reply_valid_request(message, requested_lang, transcript)
+                message.mark_read()
+                if is_video_file(media_file):
+                    log_process("Detected video, encoding subtitles...")
+                    subtitled_video = encode_subtitles(media_file)
+                    log_process(f"Subtitled encoding finished: {subtitled_video}")
+                else:
+                    log_debug("Detected audio?")
         else:
             raise Exception("Language capture regex failed")
     else:
         log_process(f"Message from /u/{message.author} was not a valid request, marking as read")
         message.mark_read()
 
-
 def reply_valid_request(message, language, transcript):
     log_process(f"Replying to /u/{message.author} for valid {language} request")
     message.reply(f"You requested a translation of {language}, Whisper returned:\n\n{transcript}")
 
-def attempt_translation(url, id, lang):
-    log_process(f"New Job: {url}")
-    target_media = download_media(url, id, lang)
-    log_process(f"Translating media file: {target_media}")
+# Returns Reddit-formatted WhisperAI transcript, appropriate for Message.reply()
+def translate_media_file(file, language):
+    log_process(f"Whisper [{language}]: {file}")
     whisper = subprocess.run([
-        "whisper", target_media,
-        "--language", lang,
+        "whisper", file,
+        "--language", language,
         "--model", config.WHISPER_MODEL,
         "--task", "translate",
         "--output_dir", config.MEDIA_TEMPDIR],
         capture_output=True
     )
     if whisper.returncode == 0:
-        log_process(f"COMPLETE - Translation of {target_media} complete")
+        log_process(f"COMPLETE - Translation of {file} complete")
         return '  \n'.join(whisper.stdout.decode('UTF-8').split('\n')) # Reddit line-break juggling
     else:
         raise Exception("Whisper exited non-zero")
 
+# Downloads and returns file location of Reddit media file
 def download_media(url, id, lang):
     filepath = f"{config.MEDIA_TEMPDIR}/{lang.lower()}_{id}.mp4"
     if file_already_exists(filepath): raise Exception("Requested file already downloaded, aborting")
@@ -72,17 +79,26 @@ def download_media(url, id, lang):
     if gettit.returncode != 0: raise Exception("gettit failed, exited non-zero")
     return filepath
 
+# Re-encodes input video with hard-coded subtltes, returns location of resultant file
 def encode_subtitles(video):
-    subbedpath = os.path.splittext(video)[0] + "_subbed" + os.path.splitext(video)[1]
-    ffmpeg = subprocess.run(["ffpmeg", "-i", video, "-vf", f"subtitles={video}.srt", subbedpath],
+    subbedpath = os.path.splitext(video)[0] + "_subbed" + os.path.splitext(video)[1]
+    ffmpeg = subprocess.run(["ffmpeg", "-i", video, "-vf", f"subtitles={video}.srt", subbedpath],
         capture_output=True)
     if ffmpeg.returncode != 0: raise Exception("ffmpeg failed attempting to encode subs")
     return subbedpath
+
+# Returns true if ffprobe shows nb_streams > 1, we can assume 1 implies audio file
+def is_video_file(file):
+    probe = subprocess.Popen(("ffprobe", "-v", "error", "-show_format", file), stdout=subprocess.PIPE)
+    grep = subprocess.check_output(('grep', 'nb_streams'), stdin=probe.stdout)
+    nb_streams = grep.decode('UTF-8').strip().split('=')[1]
+    return True if int(nb_streams) > 1 else False
 
 def file_already_exists(filepath):
     test = subprocess.run(["test", "-f", filepath], capture_output=True)
     return True if test.returncode == 0 else False
 
+# Verify that both gettit and whisper commands exist
 def check_dependencies():
     if subprocess.run(["which", "gettit"], capture_output=True).returncode != 0:
         raise Exception("Failed to find gettit, returns non-zero")
