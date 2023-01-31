@@ -71,15 +71,15 @@ def translate_media_file(file, language):
     else:
         raise Exception("Whisper exited non-zero")
 
-# Downloads and returns file location of Reddit media file
+# Downloads and returns location of Reddit media file
 def download_media(url, id, lang):
     filepath = f"{config.MEDIA_TEMPDIR}/{lang.lower()}_{id}.mp4"
-    if file_already_exists(filepath): raise Exception("Requested file already downloaded, aborting")
+    if file_exists(filepath): raise Exception("Requested file already downloaded, aborting")
     gettit = subprocess.run(["gettit", "-u", url, "-o", filepath], capture_output=True)
     if gettit.returncode != 0: raise Exception("gettit failed, exited non-zero")
     return filepath
 
-# Re-encodes input video with hard-coded subtltes, returns location of resultant file
+# Re-encodes input video with hard-coded subtltes, returns location of subtitled file
 def encode_subtitles(video):
     subbedpath = os.path.splitext(video)[0] + "_subbed" + os.path.splitext(video)[1]
     ffmpeg = subprocess.run(["ffmpeg", "-i", video, "-vf", f"subtitles={video}.srt", subbedpath],
@@ -87,23 +87,22 @@ def encode_subtitles(video):
     if ffmpeg.returncode != 0: raise Exception("ffmpeg failed attempting to encode subs")
     return subbedpath
 
-# Returns true if ffprobe shows nb_streams > 1, we can assume 1 implies audio file
+# We assume file is video if it has multiple media streams, 1 stream implies audio file
 def is_video_file(file):
-    probe = subprocess.Popen(("ffprobe", "-v", "error", "-show_format", file), stdout=subprocess.PIPE)
-    grep = subprocess.check_output(('grep', 'nb_streams'), stdin=probe.stdout)
+    ffp = subprocess.Popen(("ffprobe", "-v", "error", "-show_format", file), stdout=subprocess.PIPE)
+    grep = subprocess.check_output(('grep', 'nb_streams'), stdin=ffp.stdout)
     nb_streams = grep.decode('UTF-8').strip().split('=')[1]
     return True if int(nb_streams) > 1 else False
 
-def file_already_exists(filepath):
+def file_exists(filepath):
     test = subprocess.run(["test", "-f", filepath], capture_output=True)
     return True if test.returncode == 0 else False
 
-# Verify that both gettit and whisper commands exist
 def check_dependencies():
-    if subprocess.run(["which", "gettit"], capture_output=True).returncode != 0:
-        raise Exception("Failed to find gettit, returns non-zero")
-    if subprocess.run(["which", "whisper"], capture_output=True).returncode != 0:
-        raise Exception("Failed to find whisper, returns non-zero")
+    required_utils = ['whisper', 'gettit', 'ffmpeg', 'ffprobe']
+    for util in required_utils:
+        if subprocess.run(["which", util], capture_output=True).returncode != 0:
+            raise Exception(f"Failed to find {util} install, 'which {util}' returns non-zero")
     return True
 
 def log_err(message):     print(f"  [ERROR]  {message}")
