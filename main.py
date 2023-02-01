@@ -14,29 +14,32 @@ def main():
         user_agent=config.USER_AGENT,
         username=config.USERNAME
         )
-    try:
-        if check_dependencies(): log_debug("Dependency check passed")
-        # Check inbox for potential new translation requests
-        for unread in reversed(list(reddit.inbox.unread())):
-            parse_inbox_request(unread)
-    except Exception as e:
-        log_err(e)
-        raise e
-        exit()
+    while True:
+        try:
+            if check_dependencies(): log_debug("Dependency check passed")
+            # Check inbox for potential new translation requests
+            for unread in reversed(list(reddit.inbox.unread())):
+                parse_inbox_request(unread)
+            time.sleep(10.0)
+        except Exception as e:
+            log_err(e)
+            raise e
+            exit()
 
 # Format we want to reply to: [ignored] /u/TranslateEnglishFrom [language] [ignored]
 # TODO: You should have to say please? We shouldn't abandon civility towards machines. #Prepare
 def parse_inbox_request(message):
     if f"/u/{config.USERNAME}" in message.body:
-        lang_capture = re.search(f"(\/u\/{config.USERNAME}) (\w+)", message.body)
-        if lang_capture:
-            log_debug(f"Regex Capture: {lang_capture.group(0)}")
-            requested_lang = lang_capture.group(0).split(' ')[1].lower().capitalize()
-            if requested_lang in config.LANGUAGES:
+        language_capture = re.search(f"(\/u\/{config.USERNAME}) (\w+)", message.body)
+        if language_capture:
+            log_debug(f"Regex Capture: {language_capture.group(0)}")
+            # Whisper requires capitalized language names
+            requested_language = language_capture.group(0).split(' ')[1].lower().capitalize()
+            if requested_language in config.LANGUAGES:
                 url = f"http://reddit.com{message.submission.permalink}"
-                media_file = download_media(url, message.id, requested_lang)
-                transcript = translate_media_file(media_file, requested_lang)
-                reply_valid_request(message, requested_lang, transcript)
+                media_file = download_media(url, message.id, requested_language)
+                transcript = translate_media_file(media_file, requested_language)
+                reply_valid_request(message, requested_language, transcript)
                 message.mark_read()
                 if is_video_file(media_file):
                     log_process("Detected video, encoding subtitles...")
@@ -62,7 +65,7 @@ def translate_media_file(file, language):
         "--language", language,
         "--model", config.WHISPER_MODEL,
         "--task", "translate",
-        "--output_dir", config.MEDIA_TEMPDIR],
+        "--output_dir", config.WORKING_DIR],
         capture_output=True
     )
     if whisper.returncode == 0:
@@ -72,8 +75,8 @@ def translate_media_file(file, language):
         raise Exception("Whisper exited non-zero")
 
 # Downloads and returns location of Reddit media file
-def download_media(url, id, lang):
-    filepath = f"{config.MEDIA_TEMPDIR}/{lang.lower()}_{id}.mp4"
+def download_media(url, id, language):
+    filepath = f"{config.WORKING_DIR}/{language.lower()}_{id}.mp4"
     if file_exists(filepath): raise Exception("Requested file already downloaded, aborting")
     gettit = subprocess.run(["gettit", "-u", url, "-o", filepath], capture_output=True)
     if gettit.returncode != 0: raise Exception("gettit failed, exited non-zero")
