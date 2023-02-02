@@ -1,6 +1,7 @@
 import sys
 sys.path.append('./config')
 import os
+import shutil
 import re
 import subprocess
 import praw
@@ -104,8 +105,8 @@ def file_exists(filepath):
 def check_dependencies():
     required_utils = ['whisper', 'gettit', 'ffmpeg', 'ffprobe']
     for util in required_utils:
-        if subprocess.run(["which", util], capture_output=True).returncode != 0:
-            raise Exception(f"Failed to find {util} install, 'which {util}' returns non-zero")
+        if shutil.which(util) == None:
+            raise Exception(f"Failed to find {util} install")
     return True
 
 def log_err(message):     print(f"  [ERROR]  {message}")
