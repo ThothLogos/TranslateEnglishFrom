@@ -4,6 +4,7 @@ CLIENT_SECRET = 'changeme'
 USER_AGENT    = 'changeme'
 USERNAME      = 'changeme'
 PASSWORD      = 'changeme'
+LOOP_DELAY_SEC = 10.0
 WHISPER_MODEL = 'large-v2'
 LANGUAGES     = [
   'Afrikaans',
