@@ -1,6 +1,7 @@
 import sys
 sys.path.append('./config')
 import os
+import time
 import shutil
 import re
 import subprocess
@@ -15,13 +16,14 @@ def main():
         user_agent=config.USER_AGENT,
         username=config.USERNAME
         )
+    if check_dependencies(): log_debug("Dependency check passed")
     while True:
         try:
-            if check_dependencies(): log_debug("Dependency check passed")
             # Check inbox for potential new translation requests
             for unread in reversed(list(reddit.inbox.unread())):
                 parse_inbox_request(unread)
-            time.sleep(10.0)
+            log_debug(f"Sleeping {config.LOOP_DELAY_SEC} seconds...")
+            time.sleep(config.LOOP_DELAY_SEC)
         except Exception as e:
             log_err(e)
             raise e
@@ -39,9 +41,10 @@ def parse_inbox_request(message):
             if requested_language in config.LANGUAGES:
                 url = f"http://reddit.com{message.submission.permalink}"
                 media_file = download_media(url, message.id, requested_language)
-                transcript = translate_media_file(media_file, requested_language)
-                reply_valid_request(message, requested_language, transcript)
-                message.mark_read()
+                #transcript = translate_media_file(media_file, requested_language)
+                #reply_valid_request(message, requested_language, transcript)
+                #message.mark_read()
+                log_debug(f"Working file: {media_file}")
                 if is_video_file(media_file):
                     log_process("Detected video, encoding subtitles...")
                     subtitled_video = encode_subtitles(media_file)
@@ -77,8 +80,11 @@ def translate_media_file(file, language):
 
 # Downloads and returns location of Reddit media file
 def download_media(url, id, language):
-    filepath = f"{config.WORKING_DIR}/{language.lower()}_{id}.mp4"
-    if file_exists(filepath): raise Exception("Requested file already downloaded, aborting")
+    filepath = f"{config.WORKING_DIR}{language.lower()}_{id}.mp4"
+    if os.path.exists(filepath):
+        log_debug("Requested file already downloaded, using existing copy")
+        return filepath
+    log_process(f"Downloading: {url}")
     gettit = subprocess.run(["gettit", "-u", url, "-o", filepath], capture_output=True)
     if gettit.returncode != 0: raise Exception("gettit failed, exited non-zero")
     return filepath
@@ -86,28 +92,34 @@ def download_media(url, id, language):
 # Re-encodes input video with hard-coded subtltes, returns location of subtitled file
 def encode_subtitles(video):
     subbedpath = os.path.splitext(video)[0] + "_subbed" + os.path.splitext(video)[1]
-    ffmpeg = subprocess.run(["ffmpeg", "-i", video, "-vf", f"subtitles={video}.srt", subbedpath],
+    if os.path.exists(subbedpath): os.remove(subbedpath)
+    log_debug(f"Video path: {video}")
+    log_debug(f"Subbed path: {subbedpath}")
+    subfile = f"subtitles='{video}.srt'"
+    log_debug(f"Sub path: {subfile}")
+    subfile = subfile.replace("\\", "\\\\")
+    subfile = subfile.replace(":", "\\:")
+    log_debug(f"Sub path: {subfile}")
+    ffmpeg = subprocess.run(["ffmpeg", "-i", video, "-vf", subfile, subbedpath],
         capture_output=True)
+    log_debug(ffmpeg.returncode)
+    log_debug(ffmpeg.stderr.decode('UTF-8'))
+    log_debug(ffmpeg.stdout.decode('UTF-8'))
     if ffmpeg.returncode != 0: raise Exception("ffmpeg failed attempting to encode subs")
     return subbedpath
 
 # We assume file is video if it has multiple media streams, 1 stream implies audio file
 def is_video_file(file):
-    ffp = subprocess.Popen(("ffprobe", "-v", "error", "-show_format", file), stdout=subprocess.PIPE)
-    grep = subprocess.check_output(('grep', 'nb_streams'), stdin=ffp.stdout)
-    nb_streams = grep.decode('UTF-8').strip().split('=')[1]
+    ffp = subprocess.run(("ffprobe", "-v", "error", "-show_format", file), capture_output=True)
+    nb_streams = re.search(f"nb_streams=(\d+)", ffp.stdout.decode('UTF-8')).group(0).split('=')[1]
     return True if int(nb_streams) > 1 else False
 
-def file_exists(filepath):
-    test = subprocess.run(["test", "-f", filepath], capture_output=True)
-    return True if test.returncode == 0 else False
-
 def check_dependencies():
-    required_utils = ['whisper', 'gettit', 'ffmpeg', 'ffprobe']
-    for util in required_utils:
-        if shutil.which(util) == None:
-            raise Exception(f"Failed to find {util} install")
-    return True
+    required_commands = ['whisper', 'gettit', 'ffmpeg', 'ffprobe']
+    for cmd in required_commands:
+        if shutil.which(cmd) == None:
+            raise Exception(f"Failed to find {cmd} install, exiting")
+    return True            
 
 def log_err(message):     print(f"  [ERROR]  {message}")
 def log_debug(message):   print(f"  [DEBUG]  {message}")
