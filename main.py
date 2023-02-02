@@ -41,9 +41,9 @@ def parse_inbox_request(message):
             if requested_language in config.LANGUAGES:
                 url = f"http://reddit.com{message.submission.permalink}"
                 media_file = download_media(url, message.id, requested_language)
-                #transcript = translate_media_file(media_file, requested_language)
-                #reply_valid_request(message, requested_language, transcript)
-                #message.mark_read()
+                transcript = translate_media_file(media_file, requested_language)
+                reply_valid_request(message, requested_language, transcript)
+                message.mark_read()
                 log_debug(f"Working file: {media_file}")
                 if is_video_file(media_file):
                     log_process("Detected video, encoding subtitles...")
@@ -91,22 +91,12 @@ def download_media(url, id, language):
 
 # Re-encodes input video with hard-coded subtltes, returns location of subtitled file
 def encode_subtitles(video):
-    subbedpath = os.path.splitext(video)[0] + "_subbed" + os.path.splitext(video)[1]
-    if os.path.exists(subbedpath): os.remove(subbedpath)
-    log_debug(f"Video path: {video}")
-    log_debug(f"Subbed path: {subbedpath}")
-    subfile = f"subtitles='{video}.srt'"
-    log_debug(f"Sub path: {subfile}")
-    subfile = subfile.replace("\\", "\\\\")
-    subfile = subfile.replace(":", "\\:")
-    log_debug(f"Sub path: {subfile}")
-    ffmpeg = subprocess.run(["ffmpeg", "-i", video, "-vf", subfile, subbedpath],
-        capture_output=True)
-    log_debug(ffmpeg.returncode)
-    log_debug(ffmpeg.stderr.decode('UTF-8'))
-    log_debug(ffmpeg.stdout.decode('UTF-8'))
+    subbedvid = os.path.splitext(video)[0] + "_subbed" + os.path.splitext(video)[1]
+    if os.path.exists(subbedvid): os.remove(subbedvid)
+    srtfile = f"subtitles='{video}.srt'".replace("\\", "\\\\").replace(":", "\\:")
+    ffmpeg = subprocess.run(["ffmpeg", "-i", video, "-vf", srtfile, subbedvid], capture_output=True)
     if ffmpeg.returncode != 0: raise Exception("ffmpeg failed attempting to encode subs")
-    return subbedpath
+    return subbedvid
 
 # We assume file is video if it has multiple media streams, 1 stream implies audio file
 def is_video_file(file):
@@ -119,7 +109,7 @@ def check_dependencies():
     for cmd in required_commands:
         if shutil.which(cmd) == None:
             raise Exception(f"Failed to find {cmd} install, exiting")
-    return True            
+    return True
 
 def log_err(message):     print(f"  [ERROR]  {message}")
 def log_debug(message):   print(f"  [DEBUG]  {message}")
